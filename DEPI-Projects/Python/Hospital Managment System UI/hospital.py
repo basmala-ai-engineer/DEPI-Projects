@@ -19,7 +19,7 @@ class Hospital:
         for dept in self.departments:
             print(f"- Department: {dept.name}")
             
-    def hospital_menu():
+    def hospital_menu(self):
         """Display the hospital management menu."""
         print("=== Hospital Setup Interface ===")
         h_name = input("Enter Hospital Name: ")
@@ -45,4 +45,5 @@ class Hospital:
             else:
                 print("Invalid choice! Please select a valid option (1-3).")
 if __name__ == "__main__":
-    hospital_menu()
+    hospital = Hospital("City Hospital", "Downtown")
+    hospital.hospital_menu()
