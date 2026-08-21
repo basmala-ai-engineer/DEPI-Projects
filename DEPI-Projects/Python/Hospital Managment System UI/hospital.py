@@ -45,4 +45,4 @@ class Hospital:
             else:
                 print("Invalid choice! Please select a valid option (1-3).")
 if __name__ == "__main__":
-    hospital_menu()
+    hospital_menu()kk
