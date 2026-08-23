@@ -1,11 +1,11 @@
-class Hospital_Room:
+class HospitalRoom:
     '''
     A class representing a hospital room with attributes for room ID, capacity, status, name, description, and a list of patients.
     
     '''
     def __init__(self, room_id: int, capacity: int, status: str, name: str, description: str):
         '''
-        Initializes a Hospital_Room instance with the provided attributes.
+        Initializes a HospitalRoom instance with the provided attributes.
         
         Args:
             room_id (int): Unique identifier for the room.
@@ -86,7 +86,7 @@ class Hospital_Room:
             print(f"Patient {patient_name} not found in room '{self.name}'.")
 
 
-class NormalRoom(Hospital_Room):
+class NormalRoom(HospitalRoom):
     """
     Represents a normal hospital room.
     args:
@@ -122,7 +122,7 @@ class NormalRoom(Hospital_Room):
         print(f"Floor: {self.floor}")
 
 
-class ICURoom(Hospital_Room):
+class ICURoom(HospitalRoom):
     """
     Represents an ICU hospital room.
 
@@ -164,7 +164,7 @@ class ICURoom(Hospital_Room):
         print(f"Equipment: {', '.join(self.equipment)}")
 
 
-class NurseryRoom(Hospital_Room):
+class NurseryRoom(HospitalRoom):
     """
     Represents a nursery hospital room.
 
