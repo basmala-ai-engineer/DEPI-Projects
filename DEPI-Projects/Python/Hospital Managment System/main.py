@@ -5,8 +5,12 @@ This script provides a comprehensive CLI for managing different branches of a ho
 It integrates both the Room Management System and the Staff Attendance System.
 
 Dependencies:
-    - 'Rooms.py' containing NormalRoom, ICURoom, and NurseryRoom.
+    - 'hospital.py' containing Hospital operations and info.
+    - 'department.py' containing Department management.
+    - 'patient.py' containing Patient details and medical records.
     - 'staff.py' containing Staff, Doctor, Nurse, Receptionist, Engineer, and Manager.
+    - 'appointment.py' containing Appointment scheduling and details.
+    - 'Rooms.py' containing NormalRoom, ICURoom, and NurseryRoom.
 """
 from hospital import Hospital
 from department import Department
