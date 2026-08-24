@@ -5,7 +5,8 @@ class Department:
         self.name = name
         self.patients = []   
         self.staff = []      
-        self.appointments = []  
+        self.appointments = [] 
+        self.rooms = [] 
 
     def add_patient(self, patient):
         """Add a patient to the department."""
@@ -22,6 +23,11 @@ class Department:
         self.appointments.append(appointment)
         print(f"Appointment scheduled in {self.name} department: "
               f"{appointment.patient.name} with {appointment.staff_member.name}.")
+        
+    def add_room(self, room):
+        """Add a room to the department."""
+        self.rooms.append(room)
+        print(f"Room '{room.name}' added to {self.name} department.")
 
     def list_patients(self):
         

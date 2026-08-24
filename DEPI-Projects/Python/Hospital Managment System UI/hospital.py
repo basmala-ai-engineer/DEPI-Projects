@@ -18,6 +18,8 @@ class Hospital:
             print("No departments available.")
         for dept in self.departments:
             print(f"- Department: {dept.name}")
+            print(dept.list_patients())
+            print(dept.list_staff())
             
     def hospital_menu(self):
         """Display the hospital management menu."""
@@ -45,5 +47,5 @@ class Hospital:
             else:
                 print("Invalid choice! Please select a valid option (1-3).")
 if __name__ == "__main__":
-    hospital = Hospital("City Hospital", "Downtown")
+    hospital = Hospital("Saudia German Hospital", "Maadi")
     hospital.hospital_menu()
