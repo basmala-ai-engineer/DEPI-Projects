@@ -284,8 +284,9 @@ app = Dash(
     suppress_callback_exceptions=True
 )
 
-app.title = "Ford GoBike | Analytics Platform"
+server = app.server
 
+app.title = "Ford GoBike | Analytics Platform"
 
 # ============================================================
 # HELPER FUNCTIONS
@@ -2608,14 +2609,16 @@ def update_dashboard(
     )
 
 
+
 # ============================================================
 # RUN APP
 # ============================================================
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8050))
 
     app.run(
-        debug=True,
-        host="127.0.0.1",
-        port=8050
+        debug=False,
+        host="0.0.0.0",
+        port=port
     )
