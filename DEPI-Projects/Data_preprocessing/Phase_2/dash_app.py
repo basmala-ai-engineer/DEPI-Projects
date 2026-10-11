@@ -1,257 +1,33 @@
 # ============================================================
 # FORD GOBIKE | ANALYTICS PLATFORM
-# Supabase + Dash Dashboard
+# Supabase + Streamlit Dashboard
 # ============================================================
 
 import os
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import psycopg2
-
-from dotenv import load_dotenv
-from dash import Dash, dcc, html, Input, Output, ctx
-
-
-# ============================================================
-# ENVIRONMENT
-# ============================================================
-
-load_dotenv()
-
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-
-
-# ============================================================
-# DATABASE CONNECTION
-# ============================================================
+import streamlit as st
 
 try:
-
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-    )
-
-    print("Connected to Supabase successfully!")
-
-except Exception as e:
-
-    print("Database connection failed:")
-    print(e)
-
-    raise
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 # ============================================================
-# LOAD DATA FROM SUPABASE VIEW
+# PAGE CONFIG
 # ============================================================
 
-df = pd.read_sql_query(
-    "SELECT * FROM vw_fordgobike_analysis;",
-    conn
+st.set_page_config(
+    page_title="Ford GoBike | Analytics Platform",
+    page_icon="🚲",
+    layout="wide",
 )
-
-conn.close()
-
-print(f"Loaded {len(df):,} rows from Supabase.")
-
-
-# ============================================================
-# DATA PREPARATION
-# ============================================================
-
-# Convert datetime columns
-df["start_time"] = pd.to_datetime(
-    df["start_time"],
-    errors="coerce",
-    utc=True
-).dt.tz_localize(None)
-
-df["end_time"] = pd.to_datetime(
-    df["end_time"],
-    errors="coerce",
-    utc=True
-).dt.tz_localize(None)
-
-
-# ============================================================
-# FEBRUARY 2019 ONLY
-# ============================================================
-
-MIN_DATE = pd.Timestamp("2019-02-01")
-MAX_DATE = pd.Timestamp("2019-02-28")
-
-df = df[
-    (df["start_time"] >= MIN_DATE)
-    &
-    (df["start_time"] < MAX_DATE + pd.Timedelta(days=1))
-].copy()
-
-
-# ============================================================
-# NUMERIC CLEANING
-# ============================================================
-
-numeric_columns = [
-    "duration_sec",
-    "duration_min",
-    "duration_hour",
-    "member_age",
-    "start_station_latitude",
-    "start_station_longitude",
-    "end_station_latitude",
-    "end_station_longitude",
-]
-
-for column in numeric_columns:
-
-    if column in df.columns:
-
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="coerce"
-        )
-
-
-# ============================================================
-# AGE CLEANING
-# ============================================================
-
-df["member_age"] = pd.to_numeric(
-    df["member_age"],
-    errors="coerce"
-)
-
-df.loc[
-    (df["member_age"] < 18) |
-    (df["member_age"] > 100),
-    "member_age"
-] = np.nan
-
-
-# ============================================================
-# AGE GROUP
-# ============================================================
-
-def create_age_group(age):
-
-    if pd.isna(age):
-        return "Unknown"
-
-    if 18 <= age <= 24:
-        return "18-24"
-
-    elif 25 <= age <= 34:
-        return "25-34"
-
-    elif 35 <= age <= 44:
-        return "35-44"
-
-    elif 45 <= age <= 54:
-        return "45-54"
-
-    elif 55 <= age <= 64:
-        return "55-64"
-
-    elif age >= 65:
-        return "65+"
-
-    return "Unknown"
-
-
-df["age_group"] = df["member_age"].apply(create_age_group)
-
-
-# ============================================================
-# GENDER CLEANING
-# ============================================================
-
-df["member_gender"] = (
-    df["member_gender"]
-    .fillna("Other")
-    .astype(str)
-    .str.strip()
-)
-
-df["member_gender"] = df["member_gender"].replace(
-    {
-        "": "Other",
-        "nan": "Other",
-        "None": "Other",
-    }
-)
-
-
-# ============================================================
-# USER TYPE
-# ============================================================
-
-df["user_type"] = (
-    df["user_type"]
-    .fillna("Unknown")
-    .astype(str)
-    .str.strip()
-)
-
-
-# ============================================================
-# TIME FEATURES
-# ============================================================
-
-df["hour"] = df["start_time"].dt.hour
-
-df["day_name"] = df["start_time"].dt.day_name()
-
-df["trip_date"] = df["start_time"].dt.date
-
-
-# ============================================================
-# PEAK PERIOD
-# ============================================================
-
-def get_peak_period(hour):
-
-    if 7 <= hour <= 9:
-
-        return "Morning Peak"
-
-    elif 16 <= hour <= 18:
-
-        return "Evening Peak"
-
-    elif 10 <= hour <= 15:
-
-        return "Midday"
-
-    else:
-
-        return "Off-Peak"
-
-
-df["peak_period"] = df["hour"].apply(get_peak_period)
-
-
-# ============================================================
-# DURATION CLEANING
-# ============================================================
-
-if "duration_min" not in df.columns:
-
-    df["duration_min"] = df["duration_sec"] / 60
-
-
-if "duration_hour" not in df.columns:
-
-    df["duration_hour"] = df["duration_sec"] / 3600
 
 
 # ============================================================
@@ -260,567 +36,477 @@ if "duration_hour" not in df.columns:
 
 PRIMARY_BLUE = "#0B5A82"
 PRIMARY_DARK = "#084866"
-
-LIGHT_BLUE = "#EAF6FF"
 SOFT_BLUE = "#F4FAFE"
-
 TEXT = "#243B53"
 MUTED = "#718096"
-
 WHITE = "#FFFFFF"
-BACKGROUND = "#F6FAFD"
 BORDER = "#E1EAF2"
+BACKGROUND = "#F6FAFD"
 
-GOLD = "#F4B942"
-SUCCESS = "#36A269"
+st.markdown(
+    f"""
+    <style>
+        /* ---------- Page ---------- */
+        .stApp {{ background-color: {BACKGROUND}; }}
+        header[data-testid="stHeader"] {{ background: transparent; }}
+        .block-container {{ padding-top: 2rem; max-width: 1400px; }}
 
+        /* ---------- Sidebar ---------- */
+        section[data-testid="stSidebar"] {{ background-color: {PRIMARY_DARK}; }}
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 {{
+            color: {WHITE};
+        }}
+        section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {{
+            color: {WHITE};
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {{
+            color: #CFE8F5;
+        }}
 
-# ============================================================
-# DASH APP
-# ============================================================
+        /* ---------- Tabs (navigation) ---------- */
+        div[data-baseweb="tab-list"] {{
+            background-color: {WHITE};
+            border: 1px solid {BORDER};
+            border-radius: 10px;
+            padding: 10px;
+            gap: 8px;
+        }}
+        button[data-baseweb="tab"] {{
+            background-color: {WHITE};
+            border-radius: 8px;
+            padding: 8px 18px;
+            height: auto;
+        }}
+        button[data-baseweb="tab"] p {{
+            color: {MUTED};
+            font-weight: 600;
+        }}
+        button[data-baseweb="tab"][aria-selected="true"] {{
+            background-color: {PRIMARY_BLUE};
+        }}
+        button[data-baseweb="tab"][aria-selected="true"] p {{
+            color: {WHITE};
+        }}
+        div[data-baseweb="tab-highlight"],
+        div[data-baseweb="tab-border"] {{ display: none; }}
 
-app = Dash(
-    __name__,
-    suppress_callback_exceptions=True
+        /* ---------- KPI cards ---------- */
+        div[data-testid="stMetric"] {{
+            background-color: {WHITE};
+            border: 1px solid {BORDER};
+            border-radius: 12px;
+            padding: 16px 18px;
+            box-shadow: 0 2px 8px rgba(15, 50, 70, 0.04);
+        }}
+        div[data-testid="stMetricLabel"] p {{
+            color: {MUTED};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        div[data-testid="stMetricValue"] {{
+            color: {PRIMARY_BLUE};
+            font-weight: 700;
+        }}
+
+        /* ---------- Chart cards ---------- */
+        div[data-testid="stPlotlyChart"] {{
+            background-color: {WHITE};
+            border: 1px solid {BORDER};
+            border-radius: 12px;
+            padding: 10px;
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-server = app.server
-
-app.title = "Ford GoBike | Analytics Platform"
 
 # ============================================================
-# HELPER FUNCTIONS
+# SETTINGS (Streamlit Secrets or environment / .env)
 # ============================================================
 
-def empty_figure(message="No data available"):
+def get_setting(name):
+    value = os.getenv(name)
 
-    fig = go.Figure()
+    if value is None:
+        try:
+            value = st.secrets[name]
+        except Exception:
+            value = None
 
-    fig.add_annotation(
-        text=message,
-        x=0.5,
-        y=0.5,
-        xref="paper",
-        yref="paper",
-        showarrow=False,
-        font=dict(
-            size=16,
-            color=MUTED
-        )
+    return value
+
+
+# ============================================================
+# LOAD + PREPARE DATA (cached)
+# ============================================================
+
+def create_age_group(age):
+    if pd.isna(age):
+        return "Unknown"
+    if 18 <= age <= 24:
+        return "18-24"
+    if 25 <= age <= 34:
+        return "25-34"
+    if 35 <= age <= 44:
+        return "35-44"
+    if 45 <= age <= 54:
+        return "45-54"
+    if 55 <= age <= 64:
+        return "55-64"
+    if age >= 65:
+        return "65+"
+    return "Unknown"
+
+
+def get_peak_period(hour):
+    if 7 <= hour <= 9:
+        return "Morning Peak"
+    if 16 <= hour <= 18:
+        return "Evening Peak"
+    if 10 <= hour <= 15:
+        return "Midday"
+    return "Off-Peak"
+
+
+@st.cache_data(show_spinner="Loading data from Supabase...", ttl=3600)
+def load_data():
+
+    # ---------------- Database ----------------
+    conn = psycopg2.connect(
+        host=get_setting("DB_HOST"),
+        port=get_setting("DB_PORT"),
+        database=get_setting("DB_NAME"),
+        user=get_setting("DB_USER"),
+        password=get_setting("DB_PASSWORD"),
     )
 
+    try:
+        df = pd.read_sql_query(
+            "SELECT * FROM vw_fordgobike_analysis;",
+            conn,
+        )
+    finally:
+        conn.close()
+
+    # ---------------- Datetime ----------------
+    df["start_time"] = pd.to_datetime(
+        df["start_time"], errors="coerce", utc=True
+    ).dt.tz_localize(None)
+
+    df["end_time"] = pd.to_datetime(
+        df["end_time"], errors="coerce", utc=True
+    ).dt.tz_localize(None)
+
+    # ---------------- February 2019 only ----------------
+    min_date = pd.Timestamp("2019-02-01")
+    max_date = pd.Timestamp("2019-02-28")
+
+    df = df[
+        (df["start_time"] >= min_date)
+        & (df["start_time"] < max_date + pd.Timedelta(days=1))
+    ].copy()
+
+    # ---------------- Numeric cleaning ----------------
+    numeric_columns = [
+        "duration_sec",
+        "duration_min",
+        "duration_hour",
+        "member_age",
+        "start_station_latitude",
+        "start_station_longitude",
+        "end_station_latitude",
+        "end_station_longitude",
+    ]
+
+    for column in numeric_columns:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    # ---------------- Age ----------------
+    df.loc[
+        (df["member_age"] < 18) | (df["member_age"] > 100),
+        "member_age",
+    ] = np.nan
+
+    df["age_group"] = df["member_age"].apply(create_age_group)
+
+    # ---------------- Gender ----------------
+    df["member_gender"] = (
+        df["member_gender"].fillna("Other").astype(str).str.strip()
+    )
+    df["member_gender"] = df["member_gender"].replace(
+        {"": "Other", "nan": "Other", "None": "Other"}
+    )
+
+    # ---------------- User type ----------------
+    df["user_type"] = (
+        df["user_type"].fillna("Unknown").astype(str).str.strip()
+    )
+
+    # ---------------- Time features ----------------
+    df["hour"] = df["start_time"].dt.hour
+    df["day_name"] = df["start_time"].dt.day_name()
+    df["trip_date"] = df["start_time"].dt.date
+    df["peak_period"] = df["hour"].apply(get_peak_period)
+
+    # ---------------- Duration ----------------
+    if "duration_min" not in df.columns:
+        df["duration_min"] = df["duration_sec"] / 60
+
+    if "duration_hour" not in df.columns:
+        df["duration_hour"] = df["duration_sec"] / 3600
+
+    return df
+
+
+try:
+    df = load_data()
+except Exception:
+    st.error(
+        "Could not connect to the database. "
+        "Please check the DB_* values in the app Secrets."
+    )
+    st.stop()
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+AGE_ORDER = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+", "Unknown"]
+
+WEEKDAY_ORDER = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+
+PEAK_ORDER = ["Morning Peak", "Midday", "Evening Peak", "Off-Peak"]
+
+
+def style_fig(fig):
     fig.update_layout(
         paper_bgcolor=WHITE,
         plot_bgcolor=WHITE,
-        xaxis=dict(
-            visible=False
-        ),
-        yaxis=dict(
-            visible=False
-        ),
-        margin=dict(
-            l=20,
-            r=20,
-            t=20,
-            b=20
-        )
+        font=dict(family="Arial", color=TEXT),
+        margin=dict(l=45, r=25, t=30, b=45),
+        hoverlabel=dict(bgcolor=WHITE, font_color=TEXT),
+        legend=dict(bgcolor="rgba(255,255,255,0)"),
     )
-
+    fig.update_xaxes(showgrid=False, linecolor=BORDER)
+    fig.update_yaxes(gridcolor="#EDF2F7", zeroline=False)
     return fig
 
 
-def base_figure(fig):
-
-    fig.update_layout(
-        paper_bgcolor=WHITE,
-        plot_bgcolor=WHITE,
-        font=dict(
-            family="Arial",
-            color=TEXT
-        ),
-        margin=dict(
-            l=45,
-            r=25,
-            t=45,
-            b=45
-        ),
-        hoverlabel=dict(
-            bgcolor=WHITE,
-            font_color=TEXT
-        ),
-        legend=dict(
-            bgcolor="rgba(255,255,255,0)"
-        )
-    )
-
-    fig.update_xaxes(
-        showgrid=False,
-        linecolor=BORDER
-    )
-
-    fig.update_yaxes(
-        gridcolor="#EDF2F7",
-        zeroline=False
-    )
-
-    return fig
+def bar_chart(data, x, y, x_title, y_title, orientation="v"):
+    fig = px.bar(data, x=x, y=y, orientation=orientation)
+    fig.update_layout(xaxis_title=x_title, yaxis_title=y_title)
+    fig.update_traces(marker_color=PRIMARY_BLUE)
+    return style_fig(fig)
 
 
-def filter_data(
-    data,
-    user_type="All",
-    gender="All",
-    age_group="All",
-    start_date=None,
-    end_date=None
-):
+def show(fig):
+    st.plotly_chart(fig, use_container_width=True)
 
-    filtered = data.copy()
+
+def filter_data(data, user_type, gender, age_group, start_date, end_date):
+    filtered = data
 
     if user_type != "All":
-
-        filtered = filtered[
-            filtered["user_type"] == user_type
-        ]
+        filtered = filtered[filtered["user_type"] == user_type]
 
     if gender != "All":
-
-        filtered = filtered[
-            filtered["member_gender"] == gender
-        ]
+        filtered = filtered[filtered["member_gender"] == gender]
 
     if age_group != "All":
-
-        filtered = filtered[
-            filtered["age_group"] == age_group
-        ]
+        filtered = filtered[filtered["age_group"] == age_group]
 
     if start_date:
-
-        filtered = filtered[
-            filtered["start_time"].dt.date >= pd.to_datetime(
-                start_date
-            ).date()
-        ]
+        filtered = filtered[filtered["start_time"].dt.date >= start_date]
 
     if end_date:
-
-        filtered = filtered[
-            filtered["start_time"].dt.date <= pd.to_datetime(
-                end_date
-            ).date()
-        ]
+        filtered = filtered[filtered["start_time"].dt.date <= end_date]
 
     return filtered
 
 
-def card_title(title):
+def build_map(map_data):
+    center_lat = map_data["start_station_latitude"].mean()
+    center_lon = map_data["start_station_longitude"].mean()
 
-    return html.Div(
-        title,
-        style={
-            "fontSize": "15px",
-            "fontWeight": "700",
-            "color": TEXT,
-            "marginBottom": "12px"
-        }
-    )
+    hover = "<b>%{text}</b><br>Trips: %{customdata[0]}<extra></extra>"
 
-
-def kpi_card(title, value, subtitle=""):
-
-    return html.Div(
-        [
-
-            html.Div(
-                title,
-                style={
-                    "fontSize": "13px",
-                    "fontWeight": "600",
-                    "color": MUTED,
-                    "marginBottom": "8px"
-                }
-            ),
-
-            html.Div(
-                value,
-                style={
-                    "fontSize": "28px",
-                    "fontWeight": "700",
-                    "color": PRIMARY_BLUE,
-                    "marginBottom": "4px"
-                }
-            ),
-
-            html.Div(
-                subtitle,
-                style={
-                    "fontSize": "12px",
-                    "color": MUTED
-                }
+    try:
+        fig = go.Figure(
+            go.Scattermap(
+                lat=map_data["start_station_latitude"],
+                lon=map_data["start_station_longitude"],
+                mode="markers",
+                marker=dict(size=10, color=PRIMARY_BLUE),
+                text=map_data["start_station_name"],
+                customdata=map_data[["trips"]],
+                hovertemplate=hover,
             )
+        )
+        fig.update_layout(
+            map=dict(
+                style="open-street-map",
+                center=dict(lat=center_lat, lon=center_lon),
+                zoom=11,
+            ),
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor=WHITE,
+            height=600,
+        )
 
-        ],
-        style={
-            "backgroundColor": WHITE,
-            "border": f"1px solid {BORDER}",
-            "borderRadius": "12px",
-            "padding": "18px",
-            "minHeight": "105px",
-            "boxShadow": "0 2px 8px rgba(15, 50, 70, 0.04)"
-        }
+    except AttributeError:
+        fig = go.Figure(
+            go.Scattermapbox(
+                lat=map_data["start_station_latitude"],
+                lon=map_data["start_station_longitude"],
+                mode="markers",
+                marker=dict(size=10, color=PRIMARY_BLUE),
+                text=map_data["start_station_name"],
+                customdata=map_data[["trips"]],
+                hovertemplate=hover,
+            )
+        )
+        fig.update_layout(
+            mapbox=dict(
+                style="open-street-map",
+                center=dict(lat=center_lat, lon=center_lon),
+                zoom=11,
+            ),
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor=WHITE,
+            height=600,
+        )
+
+    return fig
+
+
+def card_title(title):
+    st.markdown(
+        f"<div style='font-size:15px; font-weight:700; color:{TEXT}; "
+        f"margin: 6px 0 8px 0;'>{title}</div>",
+        unsafe_allow_html=True,
     )
 
 
 def insight_card(title, text):
-
-    return html.Div(
-        [
-
-            html.Div(
-                title,
-                style={
-                    "fontSize": "14px",
-                    "fontWeight": "700",
-                    "color": PRIMARY_BLUE,
-                    "marginBottom": "7px"
-                }
-            ),
-
-            html.Div(
-                text,
-                style={
-                    "fontSize": "13px",
-                    "lineHeight": "1.6",
-                    "color": TEXT
-                }
-            )
-
-        ],
-        style={
-            "backgroundColor": SOFT_BLUE,
-            "borderLeft": f"4px solid {PRIMARY_BLUE}",
-            "borderRadius": "8px",
-            "padding": "15px",
-            "marginBottom": "10px"
-        }
+    st.markdown(
+        f"""
+        <div style="background-color:{SOFT_BLUE};
+                    border-left:4px solid {PRIMARY_BLUE};
+                    border-radius:8px; padding:15px; margin-bottom:10px;">
+            <div style="font-size:14px; font-weight:700;
+                        color:{PRIMARY_BLUE}; margin-bottom:7px;">{title}</div>
+            <div style="font-size:13px; line-height:1.6;
+                        color:{TEXT};">{text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR FILTERS
 # ============================================================
 
-sidebar = html.Div(
+st.sidebar.markdown("## 🚲 Ford GoBike")
+st.sidebar.caption("Analytics Platform")
+st.sidebar.markdown("---")
+st.sidebar.markdown("**FILTERS**")
 
-    [
-
-        html.Div(
-            [
-
-                html.Div(
-                    "Ford GoBike",
-                    style={
-                        "fontSize": "23px",
-                        "fontWeight": "800",
-                        "color": WHITE
-                    }
-                ),
-
-                html.Div(
-                    "Analytics Platform",
-                    style={
-                        "fontSize": "12px",
-                        "color": "#CFE8F5",
-                        "marginTop": "3px"
-                    }
-                )
-
-            ],
-            style={
-                "marginBottom": "32px"
-            }
-        ),
-
-
-        html.Div(
-            "FILTERS",
-            style={
-                "fontSize": "11px",
-                "fontWeight": "700",
-                "letterSpacing": "1px",
-                "color": "#A9D0E2",
-                "marginBottom": "14px"
-            }
-        ),
-
-
-        html.Label(
-            "User Type",
-            style={
-                "fontSize": "12px",
-                "fontWeight": "600",
-                "color": WHITE
-            }
-        ),
-
-        dcc.Dropdown(
-            id="filter-user-type",
-            options=[
-                {
-                    "label": "All",
-                    "value": "All"
-                }
-            ] + [
-                {
-                    "label": value,
-                    "value": value
-                }
-                for value in sorted(
-                    df["user_type"].dropna().unique()
-                )
-            ],
-            value="All",
-            clearable=False,
-            style={
-                "marginBottom": "18px",
-                "color": TEXT
-            }
-        ),
-
-
-        html.Label(
-            "Gender",
-            style={
-                "fontSize": "12px",
-                "fontWeight": "600",
-                "color": WHITE
-            }
-        ),
-
-        dcc.Dropdown(
-            id="filter-gender",
-            options=[
-                {
-                    "label": "All",
-                    "value": "All"
-                }
-            ] + [
-                {
-                    "label": value,
-                    "value": value
-                }
-                for value in sorted(
-                    df["member_gender"].dropna().unique()
-                )
-            ],
-            value="All",
-            clearable=False,
-            style={
-                "marginBottom": "18px",
-                "color": TEXT
-            }
-        ),
-
-
-        html.Label(
-            "Age Group",
-            style={
-                "fontSize": "12px",
-                "fontWeight": "600",
-                "color": WHITE
-            }
-        ),
-
-        dcc.Dropdown(
-            id="filter-age-group",
-            options=[
-                {
-                    "label": "All",
-                    "value": "All"
-                }
-            ] + [
-                {
-                    "label": value,
-                    "value": value
-                }
-                for value in [
-                    "18-24",
-                    "25-34",
-                    "35-44",
-                    "45-54",
-                    "55-64",
-                    "65+",
-                    "Unknown"
-                ]
-                if value in df["age_group"].unique()
-            ],
-            value="All",
-            clearable=False,
-            style={
-                "marginBottom": "18px",
-                "color": TEXT
-            }
-        ),
-
-
-        html.Label(
-            "Date Range",
-            style={
-                "fontSize": "12px",
-                "fontWeight": "600",
-                "color": WHITE
-            }
-        ),
-
-        dcc.DatePickerRange(
-            id="filter-date",
-            min_date_allowed="2019-02-01",
-            max_date_allowed="2019-02-28",
-            start_date="2019-02-01",
-            end_date="2019-02-28",
-            display_format="DD MMM",
-            style={
-                "marginBottom": "20px"
-            }
-        ),
-
-    ],
-
-    style={
-        "position": "fixed",
-        "left": "0",
-        "top": "0",
-        "bottom": "0",
-        "width": "240px",
-        "backgroundColor": PRIMARY_DARK,
-        "padding": "28px 20px",
-        "boxSizing": "border-box",
-        "overflowY": "auto"
-    }
+user_type = st.sidebar.selectbox(
+    "User Type",
+    ["All"] + sorted(df["user_type"].dropna().unique()),
 )
+
+gender = st.sidebar.selectbox(
+    "Gender",
+    ["All"] + sorted(df["member_gender"].dropna().unique()),
+)
+
+age_group = st.sidebar.selectbox(
+    "Age Group",
+    ["All"] + [a for a in AGE_ORDER if a in df["age_group"].unique()],
+)
+
+DATE_MIN = pd.Timestamp("2019-02-01").date()
+DATE_MAX = pd.Timestamp("2019-02-28").date()
+
+date_range = st.sidebar.date_input(
+    "Date Range",
+    value=(DATE_MIN, DATE_MAX),
+    min_value=DATE_MIN,
+    max_value=DATE_MAX,
+)
+
+if isinstance(date_range, (list, tuple)):
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+    elif len(date_range) == 1:
+        start_date = end_date = date_range[0]
+    else:
+        start_date, end_date = DATE_MIN, DATE_MAX
+else:
+    start_date = end_date = date_range
 
 
 # ============================================================
 # HEADER
 # ============================================================
 
-header = html.Div(
-
-    [
-
-        html.Div(
-            [
-
-                html.Div(
-                    "Ford GoBike",
-                    style={
-                        "fontSize": "25px",
-                        "fontWeight": "800",
-                        "color": PRIMARY_BLUE,
-                        "display": "inline-block",
-                        "marginRight": "8px"
-                    }
-                ),
-
-                html.Div(
-                    "Analytics Platform",
-                    style={
-                        "fontSize": "25px",
-                        "fontWeight": "500",
-                        "color": TEXT,
-                        "display": "inline-block"
-                    }
-                ),
-
-            ]
-        ),
-
-        html.Div(
-            "February 2019",
-            style={
-                "fontSize": "13px",
-                "color": MUTED,
-                "marginTop": "6px"
-            }
-        )
-
-    ],
-
-    style={
-        "marginBottom": "22px"
-    }
+st.markdown(
+    f"""
+    <div style="margin-bottom: 8px;">
+        <span style="font-size:28px; font-weight:800; color:{PRIMARY_BLUE};">
+            Ford GoBike
+        </span>
+        <span style="font-size:28px; font-weight:500; color:{TEXT};">
+            Analytics Platform
+        </span>
+        <div style="font-size:13px; color:{MUTED};">February 2019</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# NAVIGATION
+# FILTERED DATA
 # ============================================================
 
-nav_button_style = {
-    "border": "none",
-    "backgroundColor": WHITE,
-    "color": MUTED,
-    "padding": "10px 18px",
-    "borderRadius": "8px",
-    "fontWeight": "600",
-    "cursor": "pointer",
-    "marginRight": "8px"
-}
+filtered = filter_data(
+    df, user_type, gender, age_group, start_date, end_date
+)
+
+if filtered.empty:
+    st.warning("No data available for the selected filters.")
+    st.stop()
 
 
-navigation = html.Div(
+# ============================================================
+# TABS
+# ============================================================
 
+tab_overview, tab_time, tab_user, tab_duration, tab_stations = st.tabs(
     [
-
-        html.Button(
-            "Overview",
-            id="nav-overview",
-            n_clicks=0,
-            style={
-                **nav_button_style,
-                "backgroundColor": PRIMARY_BLUE,
-                "color": WHITE
-            }
-        ),
-
-        html.Button(
-            "Time Analysis",
-            id="nav-time",
-            n_clicks=0,
-            style=nav_button_style
-        ),
-
-        html.Button(
-            "User Analysis",
-            id="nav-user",
-            n_clicks=0,
-            style=nav_button_style
-        ),
-
-        html.Button(
-            "Duration Analysis",
-            id="nav-duration",
-            n_clicks=0,
-            style=nav_button_style
-        ),
-
-        html.Button(
-            "Stations",
-            id="nav-stations",
-            n_clicks=0,
-            style=nav_button_style
-        ),
-
-    ],
-
-    style={
-        "backgroundColor": WHITE,
-        "padding": "10px",
-        "borderRadius": "10px",
-        "border": f"1px solid {BORDER}",
-        "marginBottom": "22px"
-    }
+        "Overview",
+        "Time Analysis",
+        "User Analysis",
+        "Duration Analysis",
+        "Stations",
+    ]
 )
 
 
@@ -828,1797 +514,318 @@ navigation = html.Div(
 # PAGE 1 - OVERVIEW
 # ============================================================
 
-overview_page = html.Div(
+with tab_overview:
 
-    id="page-overview",
+    total_trips = len(filtered)
+    avg_duration = filtered["duration_min"].mean()
+    active_bikes = filtered["bike_id"].nunique()
+    avg_age = filtered["member_age"].mean()
 
-    children=[
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Trips", f"{total_trips:,}")
+    k2.metric("Average Duration", f"{avg_duration:.1f} min")
+    k3.metric("Active Bikes", f"{active_bikes:,}")
+    k4.metric("Average Age", f"{avg_age:.1f}")
 
-        html.Div(
-            id="overview-kpis",
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "repeat(4, minmax(0, 1fr))",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
+    col_a, col_b = st.columns([2, 1])
 
-        html.Div(
-            [
+    with col_a:
+        card_title("Daily Trips")
 
-                html.Div(
-                    [
-
-                        card_title(
-                            "Daily Trips"
-                        ),
-
-                        dcc.Graph(
-                            id="overview-daily-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "User Type Distribution"
-                        ),
-
-                        dcc.Graph(
-                            id="overview-user-type-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "2fr 1fr",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
-
-        html.Div(
-            [
-
-                html.Div(
-                    "Key Insights",
-                    style={
-                        "fontSize": "17px",
-                        "fontWeight": "700",
-                        "color": TEXT,
-                        "marginBottom": "12px"
-                    }
-                ),
-
-                html.Div(
-                    id="overview-insights"
-                )
-
-            ],
-
-            style={
-                "backgroundColor": WHITE,
-                "border": f"1px solid {BORDER}",
-                "borderRadius": "12px",
-                "padding": "18px"
-            }
+        daily = (
+            filtered.groupby("trip_date").size().reset_index(name="trips")
         )
+        daily["trip_date"] = pd.to_datetime(daily["trip_date"])
+        daily = daily.sort_values("trip_date")
 
-    ],
+        fig_daily = px.line(daily, x="trip_date", y="trips", markers=True)
+        fig_daily.update_traces(
+            line=dict(color=PRIMARY_BLUE, width=3),
+            marker=dict(size=6),
+        )
+        fig_daily.update_layout(xaxis_title="Date", yaxis_title="Trips")
+        show(style_fig(fig_daily))
 
-    style={
-        "display": "block"
-    }
-)
+    with col_b:
+        card_title("User Type Distribution")
+
+        user_counts = filtered["user_type"].value_counts().reset_index()
+        user_counts.columns = ["user_type", "count"]
+
+        fig_user_type = px.pie(
+            user_counts, names="user_type", values="count", hole=0.55
+        )
+        fig_user_type.update_traces(textinfo="percent+label")
+        show(style_fig(fig_user_type))
+
+    card_title("Key Insights")
+
+    most_common_user = filtered["user_type"].value_counts().idxmax()
+    busiest_hour = filtered["hour"].value_counts().idxmax()
+    most_common_gender = filtered["member_gender"].value_counts().idxmax()
+
+    top_station_series = (
+        filtered["start_station_name"].dropna().value_counts()
+    )
+    top_station = (
+        top_station_series.index[0] if not top_station_series.empty else "N/A"
+    )
+
+    insight_card(
+        "Most common user type",
+        f"{most_common_user} accounts for the largest share of trips "
+        f"in the selected data.",
+    )
+    insight_card(
+        "Peak hour",
+        f"The highest trip activity occurs around {busiest_hour}:00.",
+    )
+    insight_card(
+        "Gender distribution",
+        f"{most_common_gender} is the most represented gender "
+        f"category in the selected data.",
+    )
+    insight_card(
+        "Top start station",
+        f"{top_station} has the highest number of recorded trip starts.",
+    )
 
 
 # ============================================================
 # PAGE 2 - TIME ANALYSIS
 # ============================================================
 
-time_page = html.Div(
+with tab_time:
 
-    id="page-time",
+    col_a, col_b = st.columns(2)
 
-    children=[
-
-        html.Div(
-            [
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Trips by Hour"
-                        ),
-
-                        dcc.Graph(
-                            id="time-hour-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Trips by Weekday"
-                        ),
-
-                        dcc.Graph(
-                            id="time-weekday-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "1fr 1fr",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
-
-        html.Div(
-            [
-
-                card_title(
-                    "Peak Period Distribution"
-                ),
-
-                dcc.Graph(
-                    id="time-peak-chart",
-                    config={
-                        "displayModeBar": False
-                    }
-                )
-
-            ],
-
-            style={
-                "backgroundColor": WHITE,
-                "border": f"1px solid {BORDER}",
-                "borderRadius": "12px",
-                "padding": "15px"
-            }
+    with col_a:
+        card_title("Trips by Hour")
+        hourly = (
+            filtered.groupby("hour")
+            .size()
+            .reset_index(name="trips")
+            .sort_values("hour")
         )
+        show(bar_chart(hourly, "hour", "trips", "Hour of Day", "Trips"))
 
-    ],
+    with col_b:
+        card_title("Trips by Weekday")
+        weekday = (
+            filtered.groupby("day_name")
+            .size()
+            .reindex(WEEKDAY_ORDER)
+            .fillna(0)
+            .rename_axis("day_name")
+            .reset_index(name="trips")
+        )
+        show(bar_chart(weekday, "day_name", "trips", "Day", "Trips"))
 
-    style={
-        "display": "none"
-    }
-)
+    card_title("Peak Period Distribution")
+    peak = (
+        filtered.groupby("peak_period")
+        .size()
+        .reindex(PEAK_ORDER)
+        .fillna(0)
+        .rename_axis("peak_period")
+        .reset_index(name="trips")
+    )
+    show(bar_chart(peak, "peak_period", "trips", "Period", "Trips"))
 
 
 # ============================================================
 # PAGE 3 - USER ANALYSIS
 # ============================================================
 
-user_page = html.Div(
+with tab_user:
 
-    id="page-user",
+    col_a, col_b = st.columns(2)
 
-    children=[
+    with col_a:
+        card_title("Gender Distribution")
+        gender_data = filtered["member_gender"].value_counts().reset_index()
+        gender_data.columns = ["gender", "count"]
+        show(bar_chart(gender_data, "gender", "count", "Gender", "Trips"))
 
-        html.Div(
-            [
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Gender Distribution"
-                        ),
-
-                        dcc.Graph(
-                            id="user-gender-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Age Group Distribution"
-                        ),
-
-                        dcc.Graph(
-                            id="user-age-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "1fr 1fr",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
-
-        html.Div(
-            [
-
-                card_title(
-                    "User Composition"
-                ),
-
-                dcc.Graph(
-                    id="user-composition-chart",
-                    config={
-                        "displayModeBar": False
-                    }
-                )
-
-            ],
-
-            style={
-                "backgroundColor": WHITE,
-                "border": f"1px solid {BORDER}",
-                "borderRadius": "12px",
-                "padding": "15px"
-            }
+    with col_b:
+        card_title("Age Group Distribution")
+        age_data = (
+            filtered.groupby("age_group")
+            .size()
+            .reindex(AGE_ORDER)
+            .fillna(0)
+            .rename_axis("age_group")
+            .reset_index(name="count")
         )
+        show(bar_chart(age_data, "age_group", "count", "Age Group", "Trips"))
 
-    ],
-
-    style={
-        "display": "none"
-    }
-)
+    card_title("User Composition")
+    composition = (
+        filtered.groupby(["user_type", "member_gender"])
+        .size()
+        .reset_index(name="count")
+    )
+    fig_composition = px.bar(
+        composition,
+        x="user_type",
+        y="count",
+        color="member_gender",
+        barmode="group",
+    )
+    fig_composition.update_layout(xaxis_title="User Type", yaxis_title="Trips")
+    show(style_fig(fig_composition))
 
 
 # ============================================================
 # PAGE 4 - DURATION ANALYSIS
 # ============================================================
 
-duration_page = html.Div(
+with tab_duration:
 
-    id="page-duration",
+    col_a, col_b = st.columns(2)
 
-    children=[
-
-        html.Div(
-            [
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Average Duration by User Type"
-                        ),
-
-                        dcc.Graph(
-                            id="duration-user-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Average Duration by Gender"
-                        ),
-
-                        dcc.Graph(
-                            id="duration-gender-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "1fr 1fr",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
-
-        html.Div(
-            [
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Average Duration by Age Group"
-                        ),
-
-                        dcc.Graph(
-                            id="duration-age-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Trip Duration Distribution"
-                        ),
-
-                        dcc.Graph(
-                            id="duration-histogram",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "1fr 1fr",
-                "gap": "14px"
-            }
+    with col_a:
+        card_title("Average Duration by User Type")
+        duration_user = (
+            filtered.groupby("user_type")["duration_min"].mean().reset_index()
+        )
+        show(
+            bar_chart(
+                duration_user,
+                "user_type",
+                "duration_min",
+                "User Type",
+                "Average Duration (min)",
+            )
         )
 
-    ],
+    with col_b:
+        card_title("Average Duration by Gender")
+        duration_gender = (
+            filtered.groupby("member_gender")["duration_min"]
+            .mean()
+            .reset_index()
+        )
+        show(
+            bar_chart(
+                duration_gender,
+                "member_gender",
+                "duration_min",
+                "Gender",
+                "Average Duration (min)",
+            )
+        )
 
-    style={
-        "display": "none"
-    }
-)
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        card_title("Average Duration by Age Group")
+        duration_age = (
+            filtered.groupby("age_group")["duration_min"]
+            .mean()
+            .reindex(AGE_ORDER)
+            .dropna()
+            .rename_axis("age_group")
+            .reset_index()
+        )
+        show(
+            bar_chart(
+                duration_age,
+                "age_group",
+                "duration_min",
+                "Age Group",
+                "Average Duration (min)",
+            )
+        )
+
+    with col_d:
+        card_title("Trip Duration Distribution")
+        histogram_data = filtered[filtered["duration_min"].between(0, 120)]
+        fig_histogram = px.histogram(
+            histogram_data, x="duration_min", nbins=40
+        )
+        fig_histogram.update_layout(
+            xaxis_title="Duration (minutes)", yaxis_title="Trips"
+        )
+        fig_histogram.update_traces(marker_color=PRIMARY_BLUE)
+        show(style_fig(fig_histogram))
 
 
 # ============================================================
 # PAGE 5 - STATIONS
 # ============================================================
 
-stations_page = html.Div(
+with tab_stations:
 
-    id="page-stations",
+    col_a, col_b = st.columns(2)
 
-    children=[
-
-        html.Div(
-            [
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Top Start Stations"
-                        ),
-
-                        dcc.Graph(
-                            id="stations-start-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                ),
-
-                html.Div(
-                    [
-
-                        card_title(
-                            "Top End Stations"
-                        ),
-
-                        dcc.Graph(
-                            id="stations-end-chart",
-                            config={
-                                "displayModeBar": False
-                            }
-                        )
-
-                    ],
-                    style={
-                        "backgroundColor": WHITE,
-                        "border": f"1px solid {BORDER}",
-                        "borderRadius": "12px",
-                        "padding": "15px"
-                    }
-                )
-
-            ],
-
-            style={
-                "display": "grid",
-                "gridTemplateColumns":
-                    "1fr 1fr",
-                "gap": "14px",
-                "marginBottom": "18px"
-            }
-        ),
-
-        html.Div(
-            [
-
-                card_title(
-                    "Station Activity Map"
-                ),
-
-                dcc.Graph(
-                    id="stations-map",
-                    config={
-                        "displayModeBar": False
-                    },
-                    style={
-                        "height": "600px"
-                    }
-                )
-
-            ],
-
-            style={
-                "backgroundColor": WHITE,
-                "border": f"1px solid {BORDER}",
-                "borderRadius": "12px",
-                "padding": "15px"
-            }
+    with col_a:
+        card_title("Top Start Stations")
+        start_stations = (
+            filtered["start_station_name"]
+            .dropna()
+            .value_counts()
+            .head(10)
+            .sort_values()
+            .reset_index()
         )
-
-    ],
-
-    style={
-        "display": "none"
-    }
-)
-
-
-# ============================================================
-# MAIN LAYOUT
-# ============================================================
-
-app.layout = html.Div(
-
-    [
-
-        sidebar,
-
-        html.Div(
-
-            [
-
-                header,
-
-                navigation,
-
-                overview_page,
-
-                time_page,
-
-                user_page,
-
-                duration_page,
-
-                stations_page
-
-            ],
-
-            style={
-                "marginLeft": "240px",
-                "padding": "28px 30px",
-                "backgroundColor": BACKGROUND,
-                "minHeight": "100vh",
-                "boxSizing": "border-box"
-            }
-        )
-
-    ]
-
-)
-
-
-# ============================================================
-# NAVIGATION CALLBACK
-# ============================================================
-
-@app.callback(
-
-    Output("page-overview", "style"),
-    Output("page-time", "style"),
-    Output("page-user", "style"),
-    Output("page-duration", "style"),
-    Output("page-stations", "style"),
-
-    Output("nav-overview", "style"),
-    Output("nav-time", "style"),
-    Output("nav-user", "style"),
-    Output("nav-duration", "style"),
-    Output("nav-stations", "style"),
-
-    Input("nav-overview", "n_clicks"),
-    Input("nav-time", "n_clicks"),
-    Input("nav-user", "n_clicks"),
-    Input("nav-duration", "n_clicks"),
-    Input("nav-stations", "n_clicks"),
-
-)
-
-def navigate(
-    overview_clicks,
-    time_clicks,
-    user_clicks,
-    duration_clicks,
-    stations_clicks
-):
-
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # ctx.triggered_id tells us which button was actually clicked.
-    # This fixes the problem caused by comparing cumulative
-    # n_clicks values.
-    # --------------------------------------------------------
-
-    triggered = ctx.triggered_id
-
-    if triggered is None:
-
-        active_page = "overview"
-
-    elif triggered == "nav-overview":
-
-        active_page = "overview"
-
-    elif triggered == "nav-time":
-
-        active_page = "time"
-
-    elif triggered == "nav-user":
-
-        active_page = "user"
-
-    elif triggered == "nav-duration":
-
-        active_page = "duration"
-
-    elif triggered == "nav-stations":
-
-        active_page = "stations"
-
-    else:
-
-        active_page = "overview"
-
-
-    # --------------------------------------------------------
-    # PAGE STYLES
-    # --------------------------------------------------------
-
-    page_styles = {
-
-        "overview": {
-            "display": "none"
-        },
-
-        "time": {
-            "display": "none"
-        },
-
-        "user": {
-            "display": "none"
-        },
-
-        "duration": {
-            "display": "none"
-        },
-
-        "stations": {
-            "display": "none"
-        }
-
-    }
-
-    page_styles[active_page] = {
-        "display": "block"
-    }
-
-
-    # --------------------------------------------------------
-    # NAVIGATION BUTTON STYLES
-    # --------------------------------------------------------
-
-    active_nav = {
-
-        "border": "none",
-
-        "backgroundColor": PRIMARY_BLUE,
-
-        "color": WHITE,
-
-        "padding": "10px 18px",
-
-        "borderRadius": "8px",
-
-        "fontWeight": "600",
-
-        "cursor": "pointer",
-
-        "marginRight": "8px"
-
-    }
-
-
-    inactive_nav = {
-
-        "border": "none",
-
-        "backgroundColor": WHITE,
-
-        "color": MUTED,
-
-        "padding": "10px 18px",
-
-        "borderRadius": "8px",
-
-        "fontWeight": "600",
-
-        "cursor": "pointer",
-
-        "marginRight": "8px"
-
-    }
-
-
-    nav_styles = {
-
-        "overview": inactive_nav.copy(),
-
-        "time": inactive_nav.copy(),
-
-        "user": inactive_nav.copy(),
-
-        "duration": inactive_nav.copy(),
-
-        "stations": inactive_nav.copy()
-
-    }
-
-    nav_styles[active_page] = active_nav.copy()
-
-
-    return (
-
-        page_styles["overview"],
-
-        page_styles["time"],
-
-        page_styles["user"],
-
-        page_styles["duration"],
-
-        page_styles["stations"],
-
-        nav_styles["overview"],
-
-        nav_styles["time"],
-
-        nav_styles["user"],
-
-        nav_styles["duration"],
-
-        nav_styles["stations"]
-
-    )
-
-
-# ============================================================
-# ANALYTICS CALLBACK
-# ============================================================
-
-@app.callback(
-
-    Output("overview-kpis", "children"),
-    Output("overview-daily-chart", "figure"),
-    Output("overview-user-type-chart", "figure"),
-    Output("overview-insights", "children"),
-
-    Output("time-hour-chart", "figure"),
-    Output("time-weekday-chart", "figure"),
-    Output("time-peak-chart", "figure"),
-
-    Output("user-gender-chart", "figure"),
-    Output("user-age-chart", "figure"),
-    Output("user-composition-chart", "figure"),
-
-    Output("duration-user-chart", "figure"),
-    Output("duration-gender-chart", "figure"),
-    Output("duration-age-chart", "figure"),
-    Output("duration-histogram", "figure"),
-
-    Output("stations-start-chart", "figure"),
-    Output("stations-end-chart", "figure"),
-    Output("stations-map", "figure"),
-
-    Input("filter-user-type", "value"),
-    Input("filter-gender", "value"),
-    Input("filter-age-group", "value"),
-    Input("filter-date", "start_date"),
-    Input("filter-date", "end_date")
-
-)
-
-def update_dashboard(
-    user_type,
-    gender,
-    age_group,
-    start_date,
-    end_date
-):
-
-    filtered = filter_data(
-        df,
-        user_type,
-        gender,
-        age_group,
-        start_date,
-        end_date
-    )
-
-
-    # ========================================================
-    # EMPTY DATA
-    # ========================================================
-
-    if filtered.empty:
-
-        empty = empty_figure(
-            "No data available for the selected filters"
-        )
-
-        empty_kpis = [
-
-            kpi_card(
-                "Total Trips",
-                "0",
-                "Selected period"
-            ),
-
-            kpi_card(
-                "Average Duration",
-                "0 min",
-                "Per trip"
-            ),
-
-            kpi_card(
-                "Active Bikes",
-                "0",
-                "Unique bikes"
-            ),
-
-            kpi_card(
-                "Average Age",
-                "0",
-                "Members"
+        start_stations.columns = ["station", "count"]
+        show(
+            bar_chart(
+                start_stations,
+                "count",
+                "station",
+                "Trips",
+                "Start Station",
+                orientation="h",
             )
+        )
 
-        ]
-
-        empty_insights = [
-
-            insight_card(
-                "No data",
-                "No records match the selected filters."
+    with col_b:
+        card_title("Top End Stations")
+        end_stations = (
+            filtered["end_station_name"]
+            .dropna()
+            .value_counts()
+            .head(10)
+            .sort_values()
+            .reset_index()
+        )
+        end_stations.columns = ["station", "count"]
+        show(
+            bar_chart(
+                end_stations,
+                "count",
+                "station",
+                "Trips",
+                "End Station",
+                orientation="h",
             )
-
-        ]
-
-        return (
-
-            empty_kpis,
-
-            empty,
-            empty,
-
-            empty_insights,
-
-            empty,
-            empty,
-            empty,
-
-            empty,
-            empty,
-            empty,
-
-            empty,
-            empty,
-            empty,
-            empty,
-
-            empty,
-            empty,
-            empty
-
         )
 
-
-    # ========================================================
-    # KPI VALUES
-    # ========================================================
-
-    total_trips = len(filtered)
-
-    avg_duration = filtered["duration_min"].mean()
-
-    active_bikes = filtered["bike_id"].nunique()
-
-    avg_age = filtered["member_age"].mean()
-
-
-    # ========================================================
-    # KPI CARDS
-    # ========================================================
-
-    kpis = [
-
-        kpi_card(
-            "Total Trips",
-            f"{total_trips:,}",
-            "Selected period"
-        ),
-
-        kpi_card(
-            "Average Duration",
-            f"{avg_duration:.1f} min",
-            "Per trip"
-        ),
-
-        kpi_card(
-            "Active Bikes",
-            f"{active_bikes:,}",
-            "Unique bikes"
-        ),
-
-        kpi_card(
-            "Average Age",
-            f"{avg_age:.1f}",
-            "Members"
-        )
-
-    ]
-
-
-    # ========================================================
-    # DAILY TRIPS
-    # ========================================================
-
-    daily = (
-
-        filtered
-        .groupby("trip_date")
-        .size()
-        .reset_index(name="trips")
-    )
-
-    daily["trip_date"] = pd.to_datetime(
-        daily["trip_date"]
-    )
-
-    daily = daily.sort_values(
-        "trip_date"
-    )
-
-
-    fig_daily = px.line(
-        daily,
-        x="trip_date",
-        y="trips",
-        markers=True
-    )
-
-    fig_daily.update_traces(
-        line=dict(
-            color=PRIMARY_BLUE,
-            width=3
-        ),
-        marker=dict(
-            size=6
-        )
-    )
-
-    fig_daily.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Trips"
-    )
-
-    fig_daily = base_figure(
-        fig_daily
-    )
-
-
-    # ========================================================
-    # USER TYPE PIE
-    # ========================================================
-
-    user_counts = (
-
-        filtered["user_type"]
-        .value_counts()
-        .reset_index()
-    )
-
-    user_counts.columns = [
-        "user_type",
-        "count"
-    ]
-
-
-    fig_user_type = px.pie(
-        user_counts,
-        names="user_type",
-        values="count",
-        hole=0.55
-    )
-
-    fig_user_type.update_traces(
-        textinfo="percent+label"
-    )
-
-    fig_user_type = base_figure(
-        fig_user_type
-    )
-
-
-    # ========================================================
-    # INSIGHTS
-    # ========================================================
-
-    most_common_user = (
-
-        filtered["user_type"]
-        .value_counts()
-        .idxmax()
-    )
-
-    busiest_hour = (
-
-        filtered["hour"]
-        .value_counts()
-        .idxmax()
-    )
-
-    most_common_gender = (
-
-        filtered["member_gender"]
-        .value_counts()
-        .idxmax()
-    )
-
-    top_station_series = (
-
-        filtered["start_station_name"]
-        .dropna()
-        .value_counts()
-    )
-
-    if not top_station_series.empty:
-
-        top_station = top_station_series.index[0]
-
-    else:
-
-        top_station = "N/A"
-
-
-    insights = [
-
-        insight_card(
-            "Most common user type",
-            f"{most_common_user} accounts for the largest "
-            f"share of trips in the selected data."
-        ),
-
-        insight_card(
-            "Peak hour",
-            f"The highest trip activity occurs around "
-            f"{busiest_hour}:00."
-        ),
-
-        insight_card(
-            "Gender distribution",
-            f"{most_common_gender} is the most represented "
-            f"gender category in the selected data."
-        ),
-
-        insight_card(
-            "Top start station",
-            f"{top_station} has the highest number of "
-            f"recorded trip starts."
-        )
-
-    ]
-
-
-    # ========================================================
-    # TIME ANALYSIS
-    # ========================================================
-
-    hourly = (
-
-        filtered
-        .groupby("hour")
-        .size()
-        .reset_index(name="trips")
-    )
-
-    hourly = hourly.sort_values(
-        "hour"
-    )
-
-
-    fig_hour = px.bar(
-        hourly,
-        x="hour",
-        y="trips"
-    )
-
-    fig_hour.update_layout(
-        xaxis_title="Hour of Day",
-        yaxis_title="Trips"
-    )
-
-    fig_hour.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_hour = base_figure(
-        fig_hour
-    )
-
-
-    # ========================================================
-    # WEEKDAY
-    # ========================================================
-
-    weekday_order = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday"
-    ]
-
-    weekday = (
-
-        filtered
-        .groupby("day_name")
-        .size()
-        .reindex(weekday_order)
-        .fillna(0)
-        .reset_index(name="trips")
-    )
-
-
-    fig_weekday = px.bar(
-        weekday,
-        x="day_name",
-        y="trips"
-    )
-
-    fig_weekday.update_layout(
-        xaxis_title="Day",
-        yaxis_title="Trips"
-    )
-
-    fig_weekday.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_weekday = base_figure(
-        fig_weekday
-    )
-
-
-    # ========================================================
-    # PEAK PERIOD
-    # ========================================================
-
-    peak_order = [
-        "Morning Peak",
-        "Midday",
-        "Evening Peak",
-        "Off-Peak"
-    ]
-
-    peak = (
-
-        filtered
-        .groupby("peak_period")
-        .size()
-        .reindex(peak_order)
-        .fillna(0)
-        .reset_index(name="trips")
-    )
-
-
-    fig_peak = px.bar(
-        peak,
-        x="peak_period",
-        y="trips"
-    )
-
-    fig_peak.update_layout(
-        xaxis_title="Period",
-        yaxis_title="Trips"
-    )
-
-    fig_peak.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_peak = base_figure(
-        fig_peak
-    )
-
-
-    # ========================================================
-    # USER ANALYSIS - GENDER
-    # ========================================================
-
-    gender_data = (
-
-        filtered["member_gender"]
-        .value_counts()
-        .reset_index()
-    )
-
-    gender_data.columns = [
-        "gender",
-        "count"
-    ]
-
-
-    fig_gender = px.bar(
-        gender_data,
-        x="gender",
-        y="count"
-    )
-
-    fig_gender.update_layout(
-        xaxis_title="Gender",
-        yaxis_title="Trips"
-    )
-
-    fig_gender.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_gender = base_figure(
-        fig_gender
-    )
-
-
-    # ========================================================
-    # USER ANALYSIS - AGE
-    # ========================================================
-
-    age_order = [
-        "18-24",
-        "25-34",
-        "35-44",
-        "45-54",
-        "55-64",
-        "65+",
-        "Unknown"
-    ]
-
-    age_data = (
-
-        filtered
-        .groupby("age_group")
-        .size()
-        .reindex(age_order)
-        .fillna(0)
-        .reset_index(name="count")
-    )
-
-
-    fig_age = px.bar(
-        age_data,
-        x="age_group",
-        y="count"
-    )
-
-    fig_age.update_layout(
-        xaxis_title="Age Group",
-        yaxis_title="Trips"
-    )
-
-    fig_age.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_age = base_figure(
-        fig_age
-    )
-
-
-    # ========================================================
-    # USER COMPOSITION
-    # ========================================================
-
-    composition = (
-
-        filtered
-        .groupby(
-            [
-                "user_type",
-                "member_gender"
-            ]
-        )
-        .size()
-        .reset_index(name="count")
-    )
-
-
-    fig_composition = px.bar(
-        composition,
-        x="user_type",
-        y="count",
-        color="member_gender",
-        barmode="group"
-    )
-
-    fig_composition.update_layout(
-        xaxis_title="User Type",
-        yaxis_title="Trips"
-    )
-
-    fig_composition = base_figure(
-        fig_composition
-    )
-
-
-    # ========================================================
-    # DURATION - USER TYPE
-    # ========================================================
-
-    duration_user = (
-
-        filtered
-        .groupby("user_type")["duration_min"]
-        .mean()
-        .reset_index()
-    )
-
-
-    fig_duration_user = px.bar(
-        duration_user,
-        x="user_type",
-        y="duration_min"
-    )
-
-    fig_duration_user.update_layout(
-        xaxis_title="User Type",
-        yaxis_title="Average Duration (min)"
-    )
-
-    fig_duration_user.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_duration_user = base_figure(
-        fig_duration_user
-    )
-
-
-    # ========================================================
-    # DURATION - GENDER
-    # ========================================================
-
-    duration_gender = (
-
-        filtered
-        .groupby("member_gender")["duration_min"]
-        .mean()
-        .reset_index()
-    )
-
-
-    fig_duration_gender = px.bar(
-        duration_gender,
-        x="member_gender",
-        y="duration_min"
-    )
-
-    fig_duration_gender.update_layout(
-        xaxis_title="Gender",
-        yaxis_title="Average Duration (min)"
-    )
-
-    fig_duration_gender.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_duration_gender = base_figure(
-        fig_duration_gender
-    )
-
-
-    # ========================================================
-    # DURATION - AGE GROUP
-    # ========================================================
-
-    duration_age = (
-
-        filtered
-        .groupby("age_group")["duration_min"]
-        .mean()
-        .reindex(age_order)
-        .dropna()
-        .reset_index()
-    )
-
-
-    fig_duration_age = px.bar(
-        duration_age,
-        x="age_group",
-        y="duration_min"
-    )
-
-    fig_duration_age.update_layout(
-        xaxis_title="Age Group",
-        yaxis_title="Average Duration (min)"
-    )
-
-    fig_duration_age.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_duration_age = base_figure(
-        fig_duration_age
-    )
-
-
-    # ========================================================
-    # DURATION HISTOGRAM
-    # ========================================================
-
-    histogram_data = filtered[
-        filtered["duration_min"].between(
-            0,
-            120
-        )
-    ]
-
-
-    fig_histogram = px.histogram(
-        histogram_data,
-        x="duration_min",
-        nbins=40
-    )
-
-    fig_histogram.update_layout(
-        xaxis_title="Duration (minutes)",
-        yaxis_title="Trips"
-    )
-
-    fig_histogram.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_histogram = base_figure(
-        fig_histogram
-    )
-
-
-    # ========================================================
-    # TOP START STATIONS
-    # ========================================================
-
-    start_stations = (
-
-        filtered["start_station_name"]
-        .dropna()
-        .value_counts()
-        .head(10)
-        .sort_values()
-        .reset_index()
-    )
-
-    start_stations.columns = [
-        "station",
-        "count"
-    ]
-
-
-    fig_start = px.bar(
-        start_stations,
-        x="count",
-        y="station",
-        orientation="h"
-    )
-
-    fig_start.update_layout(
-        xaxis_title="Trips",
-        yaxis_title="Start Station"
-    )
-
-    fig_start.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_start = base_figure(
-        fig_start
-    )
-
-
-    # ========================================================
-    # TOP END STATIONS
-    # ========================================================
-
-    end_stations = (
-
-        filtered["end_station_name"]
-        .dropna()
-        .value_counts()
-        .head(10)
-        .sort_values()
-        .reset_index()
-    )
-
-    end_stations.columns = [
-        "station",
-        "count"
-    ]
-
-
-    fig_end = px.bar(
-        end_stations,
-        x="count",
-        y="station",
-        orientation="h"
-    )
-
-    fig_end.update_layout(
-        xaxis_title="Trips",
-        yaxis_title="End Station"
-    )
-
-    fig_end.update_traces(
-        marker_color=PRIMARY_BLUE
-    )
-
-    fig_end = base_figure(
-        fig_end
-    )
-
-
-    # ========================================================
-    # STATION MAP
-    # ========================================================
+    card_title("Station Activity Map")
 
     map_data = filtered[
         [
             "start_station_name",
             "start_station_latitude",
-            "start_station_longitude"
+            "start_station_longitude",
         ]
     ].dropna()
 
-
     map_data = (
-
-        map_data
-        .groupby(
+        map_data.groupby(
             [
                 "start_station_name",
                 "start_station_latitude",
-                "start_station_longitude"
+                "start_station_longitude",
             ]
         )
         .size()
         .reset_index(name="trips")
     )
 
-
     if map_data.empty:
-
-        fig_map = empty_figure(
-            "No station location data available"
-        )
-
+        st.info("No station location data available.")
     else:
-
-        try:
-
-            fig_map = go.Figure()
-
-            fig_map.add_trace(
-                go.Scattermap(
-                    lat=map_data[
-                        "start_station_latitude"
-                    ],
-
-                    lon=map_data[
-                        "start_station_longitude"
-                    ],
-
-                    mode="markers",
-
-                    marker=dict(
-                        size=10
-                    ),
-
-                    text=map_data[
-                        "start_station_name"
-                    ],
-
-                    customdata=map_data[
-                        ["trips"]
-                    ],
-
-                    hovertemplate=
-                    "<b>%{text}</b><br>"
-                    "Trips: %{customdata[0]}"
-                    "<extra></extra>"
-                )
-            )
-
-            fig_map.update_layout(
-
-                map=dict(
-                    style="open-street-map",
-
-                    center=dict(
-                        lat=map_data[
-                            "start_station_latitude"
-                        ].mean(),
-
-                        lon=map_data[
-                            "start_station_longitude"
-                        ].mean()
-                    ),
-
-                    zoom=11
-                ),
-
-                margin=dict(
-                    l=0,
-                    r=0,
-                    t=0,
-                    b=0
-                ),
-
-                paper_bgcolor=WHITE
-
-            )
-
-        except AttributeError:
-
-            fig_map = go.Figure()
-
-            fig_map.add_trace(
-                go.Scattermapbox(
-
-                    lat=map_data[
-                        "start_station_latitude"
-                    ],
-
-                    lon=map_data[
-                        "start_station_longitude"
-                    ],
-
-                    mode="markers",
-
-                    marker=dict(
-                        size=10
-                    ),
-
-                    text=map_data[
-                        "start_station_name"
-                    ],
-
-                    customdata=map_data[
-                        ["trips"]
-                    ],
-
-                    hovertemplate=
-                    "<b>%{text}</b><br>"
-                    "Trips: %{customdata[0]}"
-                    "<extra></extra>"
-                )
-            )
-
-            fig_map.update_layout(
-
-                mapbox=dict(
-
-                    style="open-street-map",
-
-                    center=dict(
-
-                        lat=map_data[
-                            "start_station_latitude"
-                        ].mean(),
-
-                        lon=map_data[
-                            "start_station_longitude"
-                        ].mean()
-
-                    ),
-
-                    zoom=11
-
-                ),
-
-                margin=dict(
-                    l=0,
-                    r=0,
-                    t=0,
-                    b=0
-                ),
-
-                paper_bgcolor=WHITE
-
-            )
-
-
-    # ========================================================
-    # RETURN EVERYTHING
-    # ========================================================
-
-    return (
-
-        kpis,
-
-        fig_daily,
-        fig_user_type,
-        insights,
-
-        fig_hour,
-        fig_weekday,
-        fig_peak,
-
-        fig_gender,
-        fig_age,
-        fig_composition,
-
-        fig_duration_user,
-        fig_duration_gender,
-        fig_duration_age,
-        fig_histogram,
-
-        fig_start,
-        fig_end,
-        fig_map
-
-    )
-
-
-
-# ============================================================
-# RUN APP
-# ============================================================
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))
-
-    app.run(
-        debug=False,
-        host="0.0.0.0",
-        port=port
-    )
+        show(build_map(map_data))
