@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
 # Display inline matplotlib plots with IPython
 from IPython import get_ipython
-get_ipython().run_line_magic('matplotlib', 'inline')
+
 
 def ModelComplexity(X, y):
     """ Calculates the performance of the model as model complexity increases.
